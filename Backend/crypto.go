@@ -1,139 +1,59 @@
 package main
 
 import (
-	"bufio"
 	"crypto/rand"
 	"crypto/rsa"
 	"crypto/sha256"
-	"encoding/hex"
 	"fmt"
-	"os"
 	"strings"
 )
 
-func main() {
-	var rsaPrivateKey *rsa.PrivateKey
-	var rsaPublicKey rsa.PublicKey
-	var choice int
-	reader := bufio.NewReader(os.Stdin)
-	var Vigenère [26][26]rune
+type Cipher struct {
+	privateKey     *rsa.PrivateKey
+	publicKey      rsa.PublicKey
+	vigenereTable  [26][26]rune
+	railFenceRails int
+	monoShift      int
+}
 
-	Vigenère = buildVigenereTable(Vigenère)
-
-	for {
-		displayOptions()
-		fmt.Scan(&choice)
-		reader.ReadString('\n')
-
-		switch choice {
-		case 1:
-			var cipherTextNo1 string
-			var cipherTextNo2 string
-			var cipherTextNo3 string
-			var cipherTextNo4 string
-			var cipherTextNo5 []byte
-			var keyStream []rune
-
-			plainText := readLine("Enter text to encrypt: ")
-			keyText := readLine("Enter text as key: ")
-
-			plainText = normalizeText(plainText)
-			keyText = normalizeText(keyText)
-			keyStream = makeKeyStream(keyText, plainText)
-			rsaPrivateKey, rsaPublicKey = generateRSAKeys()
-
-			fmt.Println("This is the keystream: ", keyStream)
-			fmt.Println("This is the privateKey: ", rsaPrivateKey)
-			fmt.Println("This is the publicKey: ", rsaPublicKey)
-
-			cipherTextNo1 = shiftingByFourEncryption(plainText, 4)
-			cipherTextNo2 = vigenereEncrypt(cipherTextNo1, keyStream, Vigenère)
-			cipherTextNo3 = vernamXOR(cipherTextNo2, keyStream)
-			cipherTextNo4 = railFenceEncrypt(cipherTextNo3, 3)
-			cipherTextNo5 = rsaEncrypt(rsaPublicKey, cipherTextNo4)
-
-			fmt.Println("Cipher Text Layer 1:", cipherTextNo1)
-			fmt.Println("Cipher Text Layer 2:", cipherTextNo2)
-			fmt.Println("Cipher Text Layer 3:", cipherTextNo3)
-			fmt.Println("Cipher Text Layer 4:", cipherTextNo4)
-			fmt.Printf("Cipher Text Layer 5: %x\n", cipherTextNo5)
-			fmt.Println()
-
-		case 2:
-			var decryptedRSA string
-			var keyStream []rune
-
-			cipherHex := readLine("Enter RSA-encrypted hex text: ")
-			keyText := readLine("Enter text as key: ")
-
-			cipherBytes, _ := hex.DecodeString(cipherHex)
-			keyText = normalizeText(keyText)
-
-			decryptedRSA = rsaDecrypt(rsaPrivateKey, cipherBytes)
-			decryptedRailFence := railFenceDecrypt(decryptedRSA, 3)
-
-			keyStream = makeKeyStream(keyText, decryptedRailFence)
-			vernamDecrypted := vernamXOR(decryptedRailFence, keyStream)
-			vigenereDecrypted := vigenereDecrypt(vernamDecrypted, keyStream, Vigenère)
-			finalPlainText := shiftingByFourDencryption(vigenereDecrypted, 4)
-
-			fmt.Println("Decrypted RSA (Layer 5):", decryptedRSA)
-			fmt.Println("Transpositional Cipher (Layer 4):", decryptedRailFence)
-			fmt.Println("Vernam Cipher (Layer 3):", vernamDecrypted)
-			fmt.Println("Vigenere Cipher (Layer 2):", vigenereDecrypted)
-			fmt.Println("Monoalphabetic Cipher Cipher (Layer 1):", finalPlainText)
-		case 3:
-			return
-
-		default:
-			fmt.Println("Invalid choice.")
-			fmt.Println()
-		}
+func NewCipher() *Cipher {
+	priv, pub := generateRSAKeys()
+	return &Cipher{
+		privateKey:     priv,
+		publicKey:      pub,
+		vigenereTable:  buildVigenereTable([26][26]rune{}),
+		railFenceRails: 3,
+		monoShift:      4,
 	}
 }
 
-// This are helper functions
-func displayOptions() {
-	fmt.Println("Project: One Day I Am Gonna Grow Wings Cipher")
-	fmt.Println("1. Encrypt A Text")
-	fmt.Println("2. Decrypt A Text")
-	fmt.Println("3. Exit")
-	fmt.Print("Pick your choice: ")
+func (c *Cipher) Encrypt(plainText string, key string) ([]byte, error) {
+	plainText = normalizeText(plainText)
+	key = normalizeText(key)
+	keyStream := makeKeyStream(key, plainText)
+
+	fmt.Println("This is the keystream: ", keyStream)
+	fmt.Println("This is the key: ", key)
+	fmt.Println("This is the plainText: ", plainText)
+
+	ct1 := shiftingByFourEncryption(plainText, c.monoShift)
+	ct2 := vigenereEncrypt(ct1, keyStream, c.vigenereTable)
+	ct3 := vernamXOR(ct2, keyStream)
+	ct4 := railFenceEncrypt(ct3, c.railFenceRails)
+	ct5 := rsaEncrypt(c.publicKey, ct4)
+
+	return ct5, nil
 }
 
-func readLine(prompt string) string {
-	fmt.Print(prompt)
-	reader := bufio.NewReader(os.Stdin)
-	text, _ := reader.ReadString('\n')
-	return strings.TrimSpace(text)
-}
-
-func fileCreate(fileName string) {
-	file, err := os.Create(fileName)
-	if err != nil {
-		fmt.Println("Error creating file:", err)
-		return
-	}
-	defer file.Close()
-}
-
-func fileWrite(cipherText string, fileName string) {
-	data := []byte(cipherText)
-	err := os.WriteFile(fileName, data, 0644)
-	if err != nil {
-		fmt.Println("File writing error", err)
-		return
-	}
-	fmt.Println("Data successfully written to file")
-}
-
-func fileRead(filename string) string {
-	file, err := os.ReadFile(filename)
-	if err != nil {
-		fmt.Println("File reading error", err)
-		return ""
-	}
-	return string(file)
+func (c *Cipher) Decrypt(cipherBytes []byte, key string) (string, error) {
+	key = normalizeText(key)
+	decryptedRSA := rsaDecrypt(c.privateKey, cipherBytes)
+	decryptedRailFence := railFenceDecrypt(decryptedRSA, c.railFenceRails)
+	keyStream := makeKeyStream(key, decryptedRailFence)
+	vernamDecrypted := vernamXOR(decryptedRailFence, keyStream)
+	vigenereDecrypted := vigenereDecrypt(vernamDecrypted, keyStream, c.vigenereTable)
+	finalPlainText := shiftingByFourDencryption(vigenereDecrypted, c.monoShift)
+	return finalPlainText, nil
 }
 
 // Monoalphabetic Cipher
