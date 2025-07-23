@@ -1,139 +1,121 @@
-import React, { useState } from 'react';
-import { encrypt, decrypt } from '../api/cryptoApi';
+import React, { useEffect, useRef, useState } from "react";
+import axios from "axios";
+import "../css/chat.css"; 
+import men from "../assets/boys.jpg";
 
-const CHAT_KEY = 'OnlyChars';
+const wsURL = "ws://192.168.137.97:8080/ws";
+const apiBase = "http://192.168.137.97:8080";
+// const wsURL = "ws://localhost:8080/ws";
+// const apiBase = "http://localhost:8080";
+const secretKey = "TESTTEST";
 
-export default function Chat() {
-  const [message, setMessage] = useState('');
-  const [chatLog, setChatLog] = useState([]);
-  const [cipherHex, setCipherHex] = useState('');
+const Chat = () => {
+  const [chat, setChat] = useState([]);
+  const [msg, setMsg] = useState("");
+  const ws = useRef(null);
 
-  const handleSend = async () => {
-    if (!message.trim()) return;
+    useEffect(() => {
+    ws.current = new WebSocket(wsURL);
 
+    ws.current.onmessage = async (event) => {
+        try {
+        // event.data is now a base64 string
+        const base64 = event.data;
+
+        // decode base64 to binary string
+        const binaryString = atob(base64);
+
+        // convert binary string to hex string
+        const hex = [...binaryString]
+            .map((c) => c.charCodeAt(0).toString(16).padStart(2, "0"))
+            .join("");
+
+        const res = await axios.post(`${apiBase}/decrypt`, {
+            cipherHex: hex,
+            key: secretKey,
+        });
+
+        setChat((prev) => [
+            ...prev,
+            {
+            sender: "Peer",
+            text: res.data.plainText,
+            time: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+            },
+        ]);
+        } catch (err) {
+        console.error("Decryption failed:", err);
+        setChat((prev) => [...prev, { sender: "System", text: "⚠️ Failed to decrypt message", time: "" }]);
+        }
+    };
+
+    return () => ws.current?.close();
+    }, []);
+
+    const send = async () => {
+    if (!msg) return;
     try {
-      const encrypted = await encrypt(message, CHAT_KEY);
-      setCipherHex(encrypted);
+        const res = await axios.post(`${apiBase}/encrypt`, {
+        plainText: msg,
+        key: secretKey,
+        });
+        const hex = res.data.cipherHex;
+        // convert hex string to Uint8Array
+        const byteArray = new Uint8Array(hex.match(/.{1,2}/g).map((byte) => parseInt(byte, 16)));
+        // convert Uint8Array to base64 string
+        const base64 = btoa(String.fromCharCode(...byteArray));
+        ws.current.send(base64);
 
-      setChatLog((prev) => [
+        setChat((prev) => [
         ...prev,
-        { type: 'user', text: message },
-        { type: 'encrypted', text: encrypted },
-      ]);
-
-      setMessage('');
-    } catch (err) {
-      console.error('Encryption failed:', err);
+        {
+            sender: "You",
+            text: msg,
+            time: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+        },
+        ]);
+        setMsg("");
+    } catch {
+        setChat((prev) => [...prev, { sender: "System", text: "⚠️ Failed to encrypt message", time: "" }]);
     }
-  };
-
-  const handleDecrypt = async () => {
-    try {
-      const decrypted = await decrypt(cipherHex, CHAT_KEY);
-      setChatLog((prev) => [
-        ...prev,
-        { type: 'decrypted', text: decrypted },
-      ]);
-    } catch (err) {
-      console.error('Decryption failed:', err);
-    }
-  };
+    };
 
   return (
-    <div style={styles.container}>
-      <h2 style={styles.header}>🔐 Encrypted Chat</h2>
-      <div style={styles.chatBox}>
-        {chatLog.map((entry, index) => (
-          <div
-            key={index}
-            style={{
-              ...styles.message,
-              ...(entry.type === 'user'
-                ? styles.userMsg
-                : entry.type === 'decrypted'
-                ? styles.decryptedMsg
-                : styles.encryptedMsg),
-            }}
-          >
-            <strong>{entry.type}:</strong> {entry.text}
-          </div>
-        ))}
+    <>
+    <div className="chat-container">
+        <div className="chat-header">
+            <img src={men} alt="Chat Banner" className="chat-banner" />
+            <h2 className="chat-title">Sekreto sa panag-igsoonay</h2>
+        </div>
+      <div className="chat-box">
+        {chat.map((msgObj, idx) => {
+          const isYou = msgObj.sender === "You";
+          return (
+            <div key={idx} className={`chat-message ${isYou ? "you" : ""}`}>
+              <span className={`chat-bubble ${isYou ? "you" : ""}`}>
+                <strong>{msgObj.sender}:</strong> {msgObj.text}
+                <div className="chat-timestamp">{msgObj.time}</div>
+              </span>
+            </div>
+          );
+        })}
       </div>
 
-      <div style={styles.inputArea}>
+      <div className="chat-input-area">
         <input
-          value={message}
-          onChange={(e) => setMessage(e.target.value)}
-          placeholder="Type your message..."
-          style={styles.input}
+          type="text"
+          value={msg}
+          placeholder="Type a message..."
+          onChange={(e) => setMsg(e.target.value)}
+          className="chat-input"
         />
-        <button onClick={handleSend} style={styles.sendBtn}>
+        <button onClick={send} className="chat-send-btn">
           Send
-        </button>
-        <button onClick={handleDecrypt} style={styles.decryptBtn}>
-          Decrypt Last
         </button>
       </div>
     </div>
+    </>
   );
-}
-
-const styles = {
-  container: {
-    padding: 20,
-    maxWidth: 600,
-    margin: '0 auto',
-    fontFamily: 'Arial, sans-serif',
-  },
-  header: {
-    textAlign: 'center',
-  },
-  chatBox: {
-    border: '1px solid #ccc',
-    borderRadius: 8,
-    padding: 10,
-    height: 300,
-    overflowY: 'auto',
-    backgroundColor: '#f9f9f9',
-    marginBottom: 10,
-  },
-  message: {
-    margin: '8px 0',
-    padding: 8,
-    borderRadius: 6,
-  },
-  userMsg: {
-    backgroundColor: '#e1f5fe',
-    textAlign: 'right',
-  },
-  encryptedMsg: {
-    backgroundColor: '#ffecb3',
-  },
-  decryptedMsg: {
-    backgroundColor: '#c8e6c9',
-    fontStyle: 'italic',
-  },
-  inputArea: {
-    display: 'flex',
-    gap: 8,
-  },
-  input: {
-    flex: 1,
-    padding: 8,
-    fontSize: 16,
-  },
-  sendBtn: {
-    padding: '8px 16px',
-    backgroundColor: '#2196f3',
-    color: '#fff',
-    border: 'none',
-    borderRadius: 4,
-  },
-  decryptBtn: {
-    padding: '8px 16px',
-    backgroundColor: '#4caf50',
-    color: '#fff',
-    border: 'none',
-    borderRadius: 4,
-  },
 };
+
+export default Chat;

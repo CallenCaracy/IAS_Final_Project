@@ -36,3 +36,44 @@
     transform: rotate(360deg);
   }
 }
+
+.landing-container {
+  height: 100vh;
+  background: linear-gradient(to bottom right, #f0f4f8, #d9e2ec);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  font-family: 'Segoe UI', sans-serif;
+  text-align: center;
+  padding: 20px;
+}
+
+.landing-title {
+  font-size: 2.5rem;
+  margin-bottom: 10px;
+  color: #1f2937;
+}
+
+.landing-subtext {
+  font-size: 1.2rem;
+  color: #4b5563;
+  max-width: 500px;
+}
+
+.landing-button {
+  margin-top: 30px;
+  padding: 12px 24px;
+  font-size: 1rem;
+  border-radius: 30px;
+  background-color: #0d6efd;
+  color: #fff;
+  border: none;
+  cursor: pointer;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+  transition: background-color 0.3s ease;
+}
+
+.landing-button:hover {
+  background-color: #0b5ed7;
+}

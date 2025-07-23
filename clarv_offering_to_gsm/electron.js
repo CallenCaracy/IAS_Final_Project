@@ -70,5 +70,5 @@ app.on('activate', () => {
 // .\node_modules\.bin\electron.cmd . --enable-logging And npm start
 // To run the app
 
-// go run main.go crypto.go 
+// go run main.go crypto.go webSocket.go
 // to run backend

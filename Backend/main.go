@@ -14,6 +14,8 @@ var cipher *Cipher
 
 func main() {
 	cipher = NewCipher()
+	cipher = NewCipher()
+	hub := &Hub{}
 
 	http.HandleFunc("/encrypt", func(w http.ResponseWriter, r *http.Request) {
 		var req struct {
@@ -46,12 +48,14 @@ func main() {
 		json.NewEncoder(w).Encode(resp)
 	})
 
-	// 👇 CORS middleware wrapping the default mux
+	http.HandleFunc("/ws", func(w http.ResponseWriter, r *http.Request) {
+		ServeWS(hub, w, r)
+	})
+
+	// CORS wrapping as before...
 	corsHandler := cors.New(cors.Options{
-		AllowedOrigins: []string{
-			"http://localhost:3000",
-			"http://localhost:5173",
-		},
+		// AllowedOrigins:   []string{"http://localhost:3000", "http://localhost:5173"},
+		AllowedOrigins:   []string{"*"},
 		AllowedMethods:   []string{"GET", "POST", "OPTIONS"},
 		AllowedHeaders:   []string{"Content-Type"},
 		AllowCredentials: true,

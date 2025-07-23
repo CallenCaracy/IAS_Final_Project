@@ -28,6 +28,7 @@ func NewCipher() *Cipher {
 }
 
 func (c *Cipher) Encrypt(plainText string, key string) ([]byte, error) {
+	// spacePositions := preserveSpacePositions(plainText)
 	plainText = normalizeText(plainText)
 	key = normalizeText(key)
 	keyStream := makeKeyStream(key, plainText)
@@ -38,21 +39,26 @@ func (c *Cipher) Encrypt(plainText string, key string) ([]byte, error) {
 
 	ct1 := shiftingByFourEncryption(plainText, c.monoShift)
 	ct2 := vigenereEncrypt(ct1, keyStream, c.vigenereTable)
-	ct3 := vernamXOR(ct2, keyStream)
-	ct4 := railFenceEncrypt(ct3, c.railFenceRails)
+	ct3 := vernamXOREncode(ct2, keyStream)
+	ct4 := railFenceEncryptBytes(ct3, c.railFenceRails)
 	ct5 := rsaEncrypt(c.publicKey, ct4)
 
 	return ct5, nil
 }
 
 func (c *Cipher) Decrypt(cipherBytes []byte, key string) (string, error) {
+	finalPlainTextWithSpace := ""
 	key = normalizeText(key)
 	decryptedRSA := rsaDecrypt(c.privateKey, cipherBytes)
-	decryptedRailFence := railFenceDecrypt(decryptedRSA, c.railFenceRails)
-	keyStream := makeKeyStream(key, decryptedRailFence)
-	vernamDecrypted := vernamXOR(decryptedRailFence, keyStream)
+	decryptedRailFence := railFenceDecryptBytes(decryptedRSA, c.railFenceRails)
+	keyStream := makeKeyStreamForBytes(key, len(decryptedRailFence))
+	vernamDecrypted := vernamXORDecode(decryptedRailFence, keyStream)
 	vigenereDecrypted := vigenereDecrypt(vernamDecrypted, keyStream, c.vigenereTable)
 	finalPlainText := shiftingByFourDencryption(vigenereDecrypted, c.monoShift)
+	// finalPlainTextWithSpace = reinsertSpaces(finalPlainText, spacePositions)
+
+	fmt.Println("This is the deciphertext: ", finalPlainTextWithSpace)
+
 	return finalPlainText, nil
 }
 
@@ -88,6 +94,7 @@ func shiftingByFourDencryption(cipherText string, shifting int) string {
 // Polyalphabetic Cipher
 func normalizeText(text string) string {
 	text = strings.ToUpper(strings.TrimSpace(text))
+	text = strings.ReplaceAll(text, " ", "")
 	return text
 }
 
@@ -99,6 +106,16 @@ func makeKeyStream(key string, text string) []rune {
 		} else {
 			keyStream = append(keyStream, char)
 		}
+	}
+	return keyStream
+}
+
+func makeKeyStreamForBytes(key string, length int) []rune {
+	key = normalizeText(key)
+	keyRunes := []rune(key)
+	keyStream := make([]rune, length)
+	for i := 0; i < length; i++ {
+		keyStream[i] = keyRunes[i%len(keyRunes)]
 	}
 	return keyStream
 }
@@ -154,34 +171,81 @@ func vigenereDecrypt(cipherText string, keyStream []rune, table [26][26]rune) st
 }
 
 // Vernam
-func vernamXOR(text string, keyStream []rune) string {
-	var result strings.Builder
+// func vernamXOR(text string, keyStream []rune) string {
+// 	var result strings.Builder
 
+// 	for i, char := range text {
+// 		if char >= 'A' && char <= 'Z' {
+// 			xored := (char - 'A') ^ (keyStream[i] - 'A')
+// 			result.WriteRune(xored + 'A')
+// 		} else {
+// 			result.WriteRune(char)
+// 		}
+// 	}
+
+// 	return result.String()
+// }
+
+func vernamXOREncode(text string, keyStream []rune) []byte {
+	xorBytes := make([]byte, len(text))
 	for i, char := range text {
-		if char >= 'A' && char <= 'Z' {
-			xored := (char - 'A') ^ (keyStream[i] - 'A')
-			result.WriteRune(xored + 'A')
-		} else {
-			result.WriteRune(char)
-		}
+		xorBytes[i] = byte(char) ^ byte(keyStream[i])
 	}
+	return xorBytes
+}
 
-	return result.String()
+func vernamXORDecode(xorBytes []byte, keyStream []rune) string {
+	result := make([]rune, len(xorBytes))
+	for i, b := range xorBytes {
+		result[i] = rune(b ^ byte(keyStream[i]))
+	}
+	return string(result)
 }
 
 // Transpositional Cipher
-func railFenceEncrypt(text string, rails int) string {
-	if rails <= 1 || len(text) <= rails {
-		return text
+// func railFenceEncrypt(text string, rails int) string {
+// 	if rails <= 1 || len(text) <= rails {
+// 		return text
+// 	}
+
+// 	rail := make([][]rune, rails)
+// 	row := 0
+// 	down := true
+
+// 	for _, char := range text {
+// 		rail[row] = append(rail[row], char)
+
+// 		if down {
+// 			row++
+// 			if row == rails-1 {
+// 				down = false
+// 			}
+// 		} else {
+// 			row--
+// 			if row == 0 {
+// 				down = true
+// 			}
+// 		}
+// 	}
+
+// 	var result strings.Builder
+// 	for _, r := range rail {
+// 		result.WriteString(string(r))
+// 	}
+// 	return result.String()
+// }
+
+func railFenceEncryptBytes(data []byte, rails int) []byte {
+	if rails <= 1 || len(data) <= rails {
+		return data
 	}
 
-	rail := make([][]rune, rails)
+	rail := make([][]byte, rails)
 	row := 0
 	down := true
 
-	for _, char := range text {
-		rail[row] = append(rail[row], char)
-
+	for _, b := range data {
+		rail[row] = append(rail[row], b)
 		if down {
 			row++
 			if row == rails-1 {
@@ -195,19 +259,63 @@ func railFenceEncrypt(text string, rails int) string {
 		}
 	}
 
-	var result strings.Builder
+	var result []byte
 	for _, r := range rail {
-		result.WriteString(string(r))
+		result = append(result, r...)
 	}
-	return result.String()
+	return result
 }
 
-func railFenceDecrypt(cipher string, rails int) string {
+// func railFenceDecrypt(cipher string, rails int) string {
+// 	if rails <= 1 || len(cipher) <= rails {
+// 		return cipher
+// 	}
+
+// 	// Initialize the rail pattern
+// 	pattern := make([]int, len(cipher))
+// 	row, down := 0, true
+// 	for i := range pattern {
+// 		pattern[i] = row
+// 		if down {
+// 			row++
+// 			if row == rails-1 {
+// 				down = false
+// 			}
+// 		} else {
+// 			row--
+// 			if row == 0 {
+// 				down = true
+// 			}
+// 		}
+// 	}
+
+// 	count := make([]int, rails)
+// 	for _, r := range pattern {
+// 		count[r]++
+// 	}
+
+// 	railsData := make([][]rune, rails)
+// 	idx := 0
+// 	for r := 0; r < rails; r++ {
+// 		railsData[r] = []rune(cipher[idx : idx+count[r]])
+// 		idx += count[r]
+// 	}
+
+// 	result := make([]rune, len(cipher))
+// 	railIndex := make([]int, rails)
+// 	for i, r := range pattern {
+// 		result[i] = railsData[r][railIndex[r]]
+// 		railIndex[r]++
+// 	}
+
+// 	return string(result)
+// }
+
+func railFenceDecryptBytes(cipher []byte, rails int) []byte {
 	if rails <= 1 || len(cipher) <= rails {
 		return cipher
 	}
 
-	// Initialize the rail pattern
 	pattern := make([]int, len(cipher))
 	row, down := 0, true
 	for i := range pattern {
@@ -230,21 +338,21 @@ func railFenceDecrypt(cipher string, rails int) string {
 		count[r]++
 	}
 
-	railsData := make([][]rune, rails)
+	railsData := make([][]byte, rails)
 	idx := 0
 	for r := 0; r < rails; r++ {
-		railsData[r] = []rune(cipher[idx : idx+count[r]])
+		railsData[r] = cipher[idx : idx+count[r]]
 		idx += count[r]
 	}
 
-	result := make([]rune, len(cipher))
+	result := make([]byte, len(cipher))
 	railIndex := make([]int, rails)
 	for i, r := range pattern {
 		result[i] = railsData[r][railIndex[r]]
 		railIndex[r]++
 	}
 
-	return string(result)
+	return result
 }
 
 // RSA Algorithm
@@ -256,18 +364,38 @@ func generateRSAKeys() (*rsa.PrivateKey, rsa.PublicKey) {
 	return privateKey, privateKey.PublicKey
 }
 
-func rsaEncrypt(publicKey rsa.PublicKey, plaintext string) []byte {
-	ciphertext, err := rsa.EncryptOAEP(sha256.New(), rand.Reader, &publicKey, []byte(plaintext), nil)
+func rsaEncrypt(publicKey rsa.PublicKey, plaintext []byte) []byte {
+	ciphertext, err := rsa.EncryptOAEP(sha256.New(), rand.Reader, &publicKey, plaintext, nil)
 	if err != nil {
 		panic(err)
 	}
 	return ciphertext
 }
 
-func rsaDecrypt(privateKey *rsa.PrivateKey, ciphertext []byte) string {
+func rsaDecrypt(privateKey *rsa.PrivateKey, ciphertext []byte) []byte {
 	plaintext, err := rsa.DecryptOAEP(sha256.New(), rand.Reader, privateKey, ciphertext, nil)
 	if err != nil {
 		panic(err)
 	}
-	return string(plaintext)
+	return plaintext
+}
+
+func preserveSpacePositions(text string) []int {
+	var positions []int
+	for i, ch := range text {
+		if ch == ' ' {
+			positions = append(positions, i)
+		}
+	}
+	return positions
+}
+
+func reinsertSpaces(text string, positions []int) string {
+	runes := []rune(text)
+	for _, pos := range positions {
+		if pos < len(runes) {
+			runes = append(runes[:pos], append([]rune{' '}, runes[pos:]...)...)
+		}
+	}
+	return string(runes)
 }

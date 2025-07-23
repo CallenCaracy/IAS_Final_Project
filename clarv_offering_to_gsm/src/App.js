@@ -1,15 +1,23 @@
-// src/App.js
 import React from 'react';
 import { BrowserRouter as Router, Routes, Route, useNavigate } from 'react-router-dom';
 import Chat from './pages/chat';
+import './App.css'; 
 
 function Home() {
   const navigate = useNavigate();
 
   return (
-    <div style={{ padding: 20 }}>
-      <h1>Welcome to Encryption App</h1>
-      <button onClick={() => navigate('/chat')}>Go to Chat</button>
+    <div className="landing-container">
+      <h1 className="landing-title">🔐 Secure P2P Chat</h1>
+      <p className="landing-subtext">
+        Welcome! Start a secure, end-to-end encrypted peer-to-peer chat using our custom encryption system.
+      </p>
+      <button
+        className="landing-button"
+        onClick={() => navigate('/chat')}
+      >
+        🚀 Enter Chat
+      </button>
     </div>
   );
 }
